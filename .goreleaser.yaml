@@ -1,0 +1,88 @@
+version: 2
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+builds:
+  - main: main.go
+    id: gaps-cli
+    binary: gaps-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - >-
+        -s -w
+        -X lutonite.dev/gaps-cli/_internal/version.version={{.Version}}
+        -X lutonite.dev/gaps-cli/_internal/version.commit={{.FullCommit}}
+        -X lutonite.dev/gaps-cli/_internal/version.date={{.Date}}
+        -X lutonite.dev/gaps-cli/_internal/version.arch={{.Os}}/{{.Arch}}
+archives:
+  - id: gaps-cli
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+nfpms:
+  - id: gaps-cli
+    package_name: gaps-cli
+    description: CLI for GAPS (Gaps is an Academical Planification System)
+    vendor: Lutonite Developments
+    homepage: https://lutonite.dev/
+    maintainer: Lutonite <me@l6e.ch>
+    license: LGPL-3.0
+    formats:
+      - apk
+      - deb
+      - rpm
+      - archlinux
+    bindir: /usr/local/bin
+universal_binaries:
+  - replace: false
+dockers:
+  - image_templates:
+      - "ghcr.io/heig-lherman/gaps-cli:{{ .Tag }}"
+      - "ghcr.io/heig-lherman/gaps-cli:v{{ .Major }}"
+      - "ghcr.io/heig-lherman/gaps-cli:v{{ .Major }}.{{ .Minor }}"
+      - "ghcr.io/heig-lherman/gaps-cli:latest"
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+release:
+  github:
+    owner: heig-lherman
+    name: gaps-cli
+  prerelease: auto
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj

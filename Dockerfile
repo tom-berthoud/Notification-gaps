@@ -1,0 +1,12 @@
+FROM alpine
+
+ENV GAPS_LOGIN_USERNAME="REDACTED_USERNAME" \
+    GAPS_LOGIN_PASSWORD="REDACTED_PASSWORD" \
+    GAPS_HISTORY_GRADES_FILE="/history/grades.json" \
+    GAPS_SCRAPER_API_URL="REDACTED_WEBHOOK_URL"                         \
+    GAPS_SCRAPER_API_KEY=""
+
+ENTRYPOINT ["/gaps-cli"]
+COPY gaps-cli /
+
+CMD ["--help"]
