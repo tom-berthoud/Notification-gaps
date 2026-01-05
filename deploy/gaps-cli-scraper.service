@@ -1,0 +1,14 @@
+[Unit]
+Description=gaps-cli scraper (GAPS -> notifications)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/gaps-cli.env
+ExecStart=/usr/local/bin/gaps-cli scraper --interval 300
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

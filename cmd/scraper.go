@@ -23,8 +23,6 @@ import (
 	"lutonite.dev/gaps-cli/parser"
 )
 
-const secondWebhookURL = "https://discordapp.com/api/webhooks/1432713001622048768/eX-kAL-cnwEl335e8BqeyF4Is4ZAkNuZYF8IhH_JuDruNpkXmCe1nr7M6AnImwdmiguO"
-
 type ScraperCommand struct {
 	apiUrl  string
 	apiUrl2 string
@@ -67,6 +65,10 @@ var (
 
 			ticker := time.NewTicker(time.Duration(scraperOpts.interval) * time.Second)
 
+			if err := scraperOpts.runScraper(); err != nil {
+				log.WithError(err).Error("Failed to run scraper")
+			}
+
 			defer ticker.Stop()
 			for {
 				select {
@@ -96,6 +98,9 @@ func init() {
 
 	scraperCmd.Flags().StringVarP(&scraperOpts.apiUrl, ScraperApiUrlViperKey.Flag(), "U", "", "Notifier API URL")
 	defaultViper.BindPFlag(ScraperApiUrlViperKey.Key(), scraperCmd.Flags().Lookup(ScraperApiUrlViperKey.Flag()))
+
+	scraperCmd.Flags().StringVar(&scraperOpts.apiUrl2, ScraperApiUrl2ViperKey.Flag(), "", "Second notifier API URL (optional)")
+	defaultViper.BindPFlag(ScraperApiUrl2ViperKey.Key(), scraperCmd.Flags().Lookup(ScraperApiUrl2ViperKey.Flag()))
 
 	scraperCmd.Flags().StringVarP(&scraperOpts.apiKey, ScraperApiKeyViperKey.Flag(), "k", "", "Notifier API key")
 	defaultViper.BindPFlag(ScraperApiKeyViperKey.Key(), scraperCmd.Flags().Lookup(ScraperApiKeyViperKey.Flag()))
@@ -174,9 +179,9 @@ func (s *ScraperCommand) runScraper() error {
 				log.Info("✅ Notification envoyée au webhook 1")
 			}
 
-			// ✅ envoyer sur le deuxième webhook (URL en dur)
-			if strings.HasPrefix(secondWebhookURL, "https://discord.com/api/webhooks/") {
-				if err2 := sendDiscordWebhook2(secondWebhookURL, grade); err2 != nil {
+			// ✅ envoyer sur le deuxième webhook (optionnel)
+			if strings.HasPrefix(s.apiUrl2, "https://discord.com/api/webhooks/") {
+				if err2 := sendDiscordWebhook2(s.apiUrl2, grade); err2 != nil {
 					log.WithError(err2).Error("❌ Échec du webhook 2")
 				} else {
 					log.Info("✅ Notification envoyée au webhook 2")

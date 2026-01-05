@@ -42,6 +42,7 @@ var (
 	UsernameViperKey          = viperKey("login.username", "username")
 	PasswordViperKey          = viperKey("login.password", "password")
 	ScraperApiUrlViperKey     = viperKey("scraper.api.url", "api-url")
+	ScraperApiUrl2ViperKey    = viperKey("scraper.api.url2", "api-url2")
 	ScraperApiKeyViperKey     = viperKey("scraper.api.key", "api-key")
 	TokenValueViperKey        = viperKey("login.token.value", "")
 	TokenStudentIdViperKey    = viperKey("login.token.studentId", "")
