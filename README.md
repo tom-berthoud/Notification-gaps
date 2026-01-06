@@ -76,3 +76,16 @@ docker run --rm -it \
 
 - Si tu veux surtout que **tes identifiants AAI + l’historique** restent en Suisse, oui: prends un VPS/serveur en Suisse.
 - Si tu envoies les notes sur **Discord**, elles sortent de toute façon de Suisse (Discord). L’hébergement en Suisse protège surtout la partie “scraper + stockage local”.
+
+## 🤖 GitHub Actions (gratuit, mais “best-effort”)
+
+Si tu veux le faire tourner gratuitement, tu peux utiliser un cron GitHub Actions (pas garanti à la minute près).
+
+1) Mets ton repo en **privé** (recommandé).
+2) Ajoute ces **Secrets** dans GitHub (Settings → Secrets and variables → Actions) :
+   - `GAPS_LOGIN_USERNAME`
+   - `GAPS_LOGIN_PASSWORD`
+   - `GAPS_SCRAPER_API_URL` (ton webhook Discord)
+   - Optionnel: `GAPS_SCRAPER_API_URL2`
+3) Le workflow est dans `.github/workflows/scraper.yml` et utilise `--once` pour faire un seul check et sortir.
+4) L’historique est stocké dans `.gaps/grades-history.json` et commité automatiquement pour éviter les doublons.

@@ -29,6 +29,7 @@ type ScraperCommand struct {
 	apiKey  string
 
 	interval int
+	once     bool
 
 	historyFile string
 }
@@ -57,6 +58,11 @@ var (
 				defaultViper.GetString(UsernameViperKey.Key()),
 				credentialsViper.GetString(PasswordViperKey.Key()),
 			)
+
+			if scraperOpts.once {
+				log.Info("Running scraper once")
+				return scraperOpts.runScraper()
+			}
 
 			log.Info("Starting scraper thread")
 
@@ -106,6 +112,7 @@ func init() {
 	defaultViper.BindPFlag(ScraperApiKeyViperKey.Key(), scraperCmd.Flags().Lookup(ScraperApiKeyViperKey.Flag()))
 
 	scraperCmd.Flags().IntVar(&scraperOpts.interval, "interval", 300, "Interval between each scrape (in seconds)")
+	scraperCmd.Flags().BoolVar(&scraperOpts.once, "once", false, "Run a single scrape and exit (useful for cron/GitHub Actions)")
 
 	rootCmd.AddCommand(scraperCmd)
 }
