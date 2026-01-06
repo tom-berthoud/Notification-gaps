@@ -1,9 +1,6 @@
 name: GAPS scraper
 
 on:
-  schedule:
-    # Every 10 minutes (GitHub cron is best-effort)
-    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 permissions:
