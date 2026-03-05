@@ -66,7 +66,7 @@ var (
 
 			log.Info("Starting scraper thread")
 
-			c := make(chan os.Signal)
+			c := make(chan os.Signal, 1)
 			signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 			ticker := time.NewTicker(time.Duration(scraperOpts.interval) * time.Second)
