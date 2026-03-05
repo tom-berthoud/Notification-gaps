@@ -7,30 +7,32 @@
 ### Mode en ligne (Render + UptimeRobot)
 
 
-┌─────────────────────────────────────────────────────────────────┐
-│                        TOUTES LES 10 MIN                        │
-│                                                                 │
-│   UptimeRobot ──ping──► Render (gaps-cli bot)                   │
-│                              │                                  │
-│                              ▼                                  │
-│                         Se connecte à GAPS                      │
-│                         (heig-vd.ch)                            │
-│                              │                                  │
-│                    Nouvelle note détectée ?                     │
-│                         OUI │         NON                       │
-│                             ▼          ▼                        │
-│               Embed Discord envoyé   Rien (silence)             │
-│               dans le salon          Log: "No changes"          │
-└─────────────────────────────────────────────────────────────────┘
+```text
+┌───────────────────────────────────────────────────────────────────┐
+│                        TOUTES LES 10 MIN                          │
+│                                                                   │
+│  UptimeRobot ── ping ──► Render (gaps-cli bot)                    │
+│                               │                                   │
+│                               ▼                                   │
+│                          Se connecte à GAPS                       │
+│                          (heig-vd.ch)                             │
+│                               │                                   │
+│                     Nouvelle note détectée ?                      │
+│                         OUI │        NON                          │
+│                             ▼         ▼                           │
+│                Embed Discord envoyé   Rien (silence)              │
+│                dans le salon          Log: "No changes"           │
+└───────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────┐
-│                     À LA DEMANDE (toi)                          │
-│                                                                 │
-│   Toi (tel/PC) ──/notes──► Render ──► GAPS ──► réponse éphémère │
-│                                                                 │
-│   Réponse éphémère = visible uniquement par toi,                │
-│   disparaît quand tu fermes Discord, jamais dans le salon.      │
-└─────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│                      À LA DEMANDE (toi)                           │
+│                                                                   │
+│  Toi (tel/PC) ── /notes ──► Render ──► GAPS ──► réponse éphémère  │
+│                                                                   │
+│  Réponse éphémère = visible uniquement par toi,                   │
+│  disparaît quand tu fermes Discord, jamais dans le salon.         │
+└───────────────────────────────────────────────────────────────────┘
+```
 
 
 ### Ce qui est visible par qui ?
@@ -212,8 +214,6 @@ Les ajouts de ce fork :
 
 **Auteur du fork :** [Tom Berthoud](https://github.com/tom-berthoud)
 
-Merci à [heig-lherman] pour le projet initial et à la communauté open-source pour l'inspiration !
-
 Merci à Claude code pour avoir carry le projet.
 
-N'héstiter pas à contribuer, signaler des bugs ou proposer des améliorations via les issues ou pull requests !
+N'hésitez pas à contribuer, signaler des bugs ou proposer des améliorations via les issues ou pull requests !
