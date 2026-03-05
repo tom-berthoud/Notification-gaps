@@ -203,8 +203,33 @@ func (b *BotCommand) registerSlashCommands(dg *discordgo.Session, guildId string
 			Description: "Affiche toutes tes notes (toutes les années)",
 		},
 		{
+			Name:        "moyenne",
+			Description: "Affiche les moyennes générales par matière",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "semestre",
+					Description: "Numéro de semestre (S1 à S6)",
+					Required:    false,
+					Choices:     semChoices,
+				},
+			},
+		},
+		{
+			Name:        "recap",
+			Description: "Résumé rapide : nombre de notes, moyennes, statut global",
+		},
+		{
+			Name:        "manquantes",
+			Description: "Liste les notes pas encore publiées",
+		},
+		{
 			Name:        "absences",
 			Description: "Affiche tes absences",
+		},
+		{
+			Name:        "clear",
+			Description: "Supprime les messages du canal (100 max)",
 		},
 	}
 
@@ -224,6 +249,18 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 			return
 		}
 
+		data := i.ApplicationCommandData()
+
+		// /clear is handled separately (ephemeral + no embed)
+		if data.Name == "clear" {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{Flags: discordgo.MessageFlagsEphemeral},
+			})
+			b.handleClear(s, i, channelId)
+			return
+		}
+
 		// Acknowledge immediately (Discord requires response within 3s)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
@@ -232,7 +269,6 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 		var embeds []*discordgo.MessageEmbed
 		var err error
 
-		data := i.ApplicationCommandData()
 		switch data.Name {
 		case "notes":
 			year := currentAcademicYear()
@@ -247,6 +283,21 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 			embeds, err = b.buildGradesEmbeds(year, filter)
 		case "allnotes":
 			embeds, err = b.buildAllGradesEmbeds()
+		case "moyenne":
+			year := currentAcademicYear()
+			var filter func(time.Time) bool
+			for _, opt := range data.Options {
+				if opt.Name == "semestre" {
+					sem := int(opt.IntValue())
+					year = semesterToYear(sem)
+					filter = semesterFilter(sem)
+				}
+			}
+			embeds, err = b.buildMoyenneEmbeds(year, filter)
+		case "recap":
+			embeds, err = b.buildRecapEmbeds()
+		case "manquantes":
+			embeds, err = b.buildManquantesEmbeds()
 		case "absences":
 			embeds, err = b.buildAbsencesEmbeds()
 		default:
@@ -549,4 +600,206 @@ func (b *BotCommand) buildAbsencesEmbeds() ([]*discordgo.MessageEmbed, error) {
 		Color:       0x3498db,
 		Fields:      fields,
 	}}, nil
+}
+
+// ── /moyenne ─────────────────────────────────────────────────────────────────
+
+func (b *BotCommand) buildMoyenneEmbeds(year uint, dateFilter func(time.Time) bool) ([]*discordgo.MessageEmbed, error) {
+	if isTokenExpired() {
+		refreshToken(defaultViper.GetString(UsernameViperKey.Key()), credentialsViper.GetString(PasswordViperKey.Key()))
+	}
+	cfg := buildTokenClientConfiguration()
+	grades, err := gaps.NewGradesAction(cfg, year).FetchGrades()
+	if err != nil {
+		return nil, err
+	}
+
+	fields := []*discordgo.MessageEmbedField{}
+	for _, class := range grades {
+		// If a date filter is active, check that at least one grade passes it
+		if dateFilter != nil {
+			hasGrade := false
+			for _, group := range class.GradeGroups {
+				for _, g := range group.Grades {
+					if dateFilter(g.Date) {
+						hasGrade = true
+						break
+					}
+				}
+				if hasGrade {
+					break
+				}
+			}
+			if !hasGrade {
+				continue
+			}
+		}
+
+		mean := class.GlobalMean
+		if mean == "" || mean == "-" {
+			mean = "—"
+		}
+		emoji := "⚪"
+		if v, err2 := strconv.ParseFloat(mean, 32); err2 == nil {
+			switch {
+			case v >= 5.0:
+				emoji = "🟢"
+			case v >= 4.0:
+				emoji = "🟡"
+			default:
+				emoji = "🔴"
+			}
+		}
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   class.Name,
+			Value:  fmt.Sprintf("%s **%s**", emoji, mean),
+			Inline: true,
+		})
+	}
+
+	label := fmt.Sprintf("Moyennes %d-%d", year, year+1)
+	if len(fields) == 0 {
+		return []*discordgo.MessageEmbed{{Title: label, Description: "Aucune note trouvée.", Color: 0x95a5a6}}, nil
+	}
+	return []*discordgo.MessageEmbed{{Title: label, Color: 0x3498db, Fields: fields}}, nil
+}
+
+// ── /recap ────────────────────────────────────────────────────────────────────
+
+func (b *BotCommand) buildRecapEmbeds() ([]*discordgo.MessageEmbed, error) {
+	if isTokenExpired() {
+		refreshToken(defaultViper.GetString(UsernameViperKey.Key()), credentialsViper.GetString(PasswordViperKey.Key()))
+	}
+	cfg := buildTokenClientConfiguration()
+	grades, err := gaps.NewGradesAction(cfg, currentAcademicYear()).FetchGrades()
+	if err != nil {
+		return nil, err
+	}
+
+	var totalGrades, missingGrades int
+	var below4, above5 int
+	fields := []*discordgo.MessageEmbedField{}
+
+	for _, class := range grades {
+		for _, group := range class.GradeGroups {
+			for _, g := range group.Grades {
+				totalGrades++
+				if g.Grade == "-" || g.Grade == "" {
+					missingGrades++
+				} else if v, err2 := strconv.ParseFloat(g.Grade, 32); err2 == nil {
+					if v < 4.0 {
+						below4++
+					} else if v >= 5.0 {
+						above5++
+					}
+				}
+			}
+		}
+		mean := class.GlobalMean
+		if mean == "" {
+			mean = "—"
+		}
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   class.Name,
+			Value:  fmt.Sprintf("Moyenne : **%s**", mean),
+			Inline: true,
+		})
+	}
+
+	obtained := totalGrades - missingGrades
+	desc := fmt.Sprintf(
+		"**%d** notes obtenues sur **%d** attendues\n🟢 ≥5 : **%d** | 🟡 4-5 : **%d** | 🔴 <4 : **%d**\n⏳ En attente : **%d**",
+		obtained, totalGrades, above5, obtained-above5-below4, below4, missingGrades,
+	)
+
+	return []*discordgo.MessageEmbed{{
+		Title:       fmt.Sprintf("Récap %d-%d", currentAcademicYear(), currentAcademicYear()+1),
+		Description: desc,
+		Color:       0x9b59b6,
+		Fields:      fields,
+	}}, nil
+}
+
+// ── /manquantes ───────────────────────────────────────────────────────────────
+
+func (b *BotCommand) buildManquantesEmbeds() ([]*discordgo.MessageEmbed, error) {
+	if isTokenExpired() {
+		refreshToken(defaultViper.GetString(UsernameViperKey.Key()), credentialsViper.GetString(PasswordViperKey.Key()))
+	}
+	cfg := buildTokenClientConfiguration()
+	grades, err := gaps.NewGradesAction(cfg, currentAcademicYear()).FetchGrades()
+	if err != nil {
+		return nil, err
+	}
+
+	fields := []*discordgo.MessageEmbedField{}
+	for _, class := range grades {
+		for _, group := range class.GradeGroups {
+			for _, g := range group.Grades {
+				if g.Grade != "-" && g.Grade != "" {
+					continue
+				}
+				date := "date inconnue"
+				if !g.Date.IsZero() {
+					date = g.Date.Format("02.01.2006")
+				}
+				fields = append(fields, &discordgo.MessageEmbedField{
+					Name:   fmt.Sprintf("%s — %s", class.Name, g.Description),
+					Value:  fmt.Sprintf("⏳ Prévue le %s | Poids : %.0f%%", date, g.Weight),
+					Inline: false,
+				})
+			}
+		}
+	}
+
+	if len(fields) == 0 {
+		return []*discordgo.MessageEmbed{{
+			Title:       "Notes manquantes",
+			Description: "✅ Toutes les notes sont publiées !",
+			Color:       0x2ecc71,
+		}}, nil
+	}
+	return []*discordgo.MessageEmbed{{
+		Title:  fmt.Sprintf("Notes manquantes (%d)", len(fields)),
+		Color:  0xe67e22,
+		Fields: fields,
+	}}, nil
+}
+
+// ── /clear ────────────────────────────────────────────────────────────────────
+
+func (b *BotCommand) handleClear(s *discordgo.Session, i *discordgo.InteractionCreate, channelId string) {
+	msgs, err := s.ChannelMessages(channelId, 100, "", "", "")
+	if err != nil {
+		s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{Content: "❌ Impossible de récupérer les messages."})
+		return
+	}
+
+	var ids []string
+	for _, m := range msgs {
+		ids = append(ids, m.ID)
+	}
+
+	if len(ids) == 0 {
+		s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{Content: "Le canal est déjà vide."})
+		return
+	}
+
+	if err := s.ChannelMessagesBulkDelete(channelId, ids); err != nil {
+		// Bulk delete fails for messages > 14 days — delete one by one as fallback
+		deleted := 0
+		for _, id := range ids {
+			if s.ChannelMessageDelete(channelId, id) == nil {
+				deleted++
+			}
+		}
+		s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+			Content: fmt.Sprintf("✅ %d message(s) supprimé(s) (anciens messages : suppression unitaire).", deleted),
+		})
+		return
+	}
+
+	s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: fmt.Sprintf("✅ %d message(s) supprimé(s).", len(ids)),
+	})
 }
