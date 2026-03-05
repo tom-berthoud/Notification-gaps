@@ -145,6 +145,34 @@ func semesterToYear(sem int) uint {
 	return startYear + uint((sem-1)/2)
 }
 
+// isAutumnGrade returns true if the grade date falls in the autumn semester (Sept–Jan).
+// Zero dates are included in both semesters (shown always).
+func isAutumnGrade(d time.Time) bool {
+	if d.IsZero() {
+		return true
+	}
+	m := d.Month()
+	return m >= 9 || m <= 1
+}
+
+// isSpringGrade returns true if the grade date falls in the spring semester (Feb–Aug).
+func isSpringGrade(d time.Time) bool {
+	if d.IsZero() {
+		return true
+	}
+	m := d.Month()
+	return m >= 2 && m <= 8
+}
+
+// semesterFilter returns the date filter function for odd (autumn) or even (spring) semesters.
+// Returns nil if no filter should be applied.
+func semesterFilter(sem int) func(time.Time) bool {
+	if sem%2 == 1 {
+		return isAutumnGrade
+	}
+	return isSpringGrade
+}
+
 // registerSlashCommands registers slash commands on the guild (instant) or globally (up to 1h delay).
 func (b *BotCommand) registerSlashCommands(dg *discordgo.Session, guildId string) error {
 	semChoices := []*discordgo.ApplicationCommandOptionChoice{
@@ -208,12 +236,15 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 		switch data.Name {
 		case "notes":
 			year := currentAcademicYear()
+			var filter func(time.Time) bool
 			for _, opt := range data.Options {
 				if opt.Name == "semestre" {
-					year = semesterToYear(int(opt.IntValue()))
+					sem := int(opt.IntValue())
+					year = semesterToYear(sem)
+					filter = semesterFilter(sem)
 				}
 			}
-			embeds, err = b.buildGradesEmbeds(year)
+			embeds, err = b.buildGradesEmbeds(year, filter)
 		case "allnotes":
 			embeds, err = b.buildAllGradesEmbeds()
 		case "absences":
@@ -399,7 +430,7 @@ func (b *BotCommand) buildAllGradesEmbeds() ([]*discordgo.MessageEmbed, error) {
 	startYear := defaultViper.GetUint(StudyStartYearViperKey.Key())
 	var embeds []*discordgo.MessageEmbed
 	for year := startYear; year <= currentAcademicYear(); year++ {
-		e, err := b.buildGradesEmbeds(year)
+		e, err := b.buildGradesEmbeds(year, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -408,7 +439,7 @@ func (b *BotCommand) buildAllGradesEmbeds() ([]*discordgo.MessageEmbed, error) {
 	return embeds, nil
 }
 
-func (b *BotCommand) buildGradesEmbeds(year uint) ([]*discordgo.MessageEmbed, error) {
+func (b *BotCommand) buildGradesEmbeds(year uint, dateFilter func(time.Time) bool) ([]*discordgo.MessageEmbed, error) {
 	if isTokenExpired() {
 		refreshToken(
 			defaultViper.GetString(UsernameViperKey.Key()),
@@ -425,18 +456,28 @@ func (b *BotCommand) buildGradesEmbeds(year uint) ([]*discordgo.MessageEmbed, er
 	for _, class := range grades {
 		fields := []*discordgo.MessageEmbedField{}
 		for _, group := range class.GradeGroups {
+			gradeCount := 0
 			for _, g := range group.Grades {
+				if dateFilter != nil && !dateFilter(g.Date) {
+					continue
+				}
+				gradeCount++
 				fields = append(fields, &discordgo.MessageEmbedField{
 					Name:   g.Description,
 					Value:  fmt.Sprintf("Note: **%s** | Moy: **%s** | Poids: %.0f%%", g.Grade, g.ClassMean, g.Weight),
 					Inline: false,
 				})
 			}
-			fields = append(fields, &discordgo.MessageEmbedField{
-				Name:   fmt.Sprintf("— Moyenne %s", group.Name),
-				Value:  fmt.Sprintf("**%s** (poids %d%%)", group.Mean, group.Weight),
-				Inline: false,
-			})
+			if gradeCount > 0 {
+				fields = append(fields, &discordgo.MessageEmbedField{
+					Name:   fmt.Sprintf("— Moyenne %s", group.Name),
+					Value:  fmt.Sprintf("**%s** (poids %d%%)", group.Mean, group.Weight),
+					Inline: false,
+				})
+			}
+		}
+		if len(fields) == 0 {
+			continue // skip courses with no grades in this semester
 		}
 
 		title := fmt.Sprintf("[%d-%d] %s", year, year+1, class.Name)
