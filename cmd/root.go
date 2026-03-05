@@ -126,7 +126,7 @@ func initViper(cmd *cobra.Command, v *viper.Viper, name string, configDir string
 	}
 
 	log.Debugf("writing config file %s", v.ConfigFileUsed())
-	if err := v.SafeWriteConfigAs(v.ConfigFileUsed()); err != nil {
+	if err := v.SafeWriteConfig(); err != nil {
 		util.CheckErrExcept(err, viper.ConfigFileAlreadyExistsError(""))
 	}
 	// Restreindre les permissions du fichier de config (600 = lecture/écriture owner uniquement)
