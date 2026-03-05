@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: gaps-discord-bot
+    runtime: go
+    buildCommand: go build -o gaps-cli .
+    startCommand: ./gaps-cli bot
+    envVars:
+      - key: GAPS_LOGIN_USERNAME
+        sync: false
+      - key: GAPS_LOGIN_PASSWORD
+        sync: false
+      - key: GAPS_DISCORD_BOT_TOKEN
+        sync: false
+      - key: GAPS_DISCORD_CHANNEL_ID
+        sync: false
+      - key: GAPS_DISCORD_GUILD_ID
+        sync: false
+      - key: GAPS_HISTORY_GRADES_FILE
+        value: /tmp/grades-history.json

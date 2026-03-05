@@ -47,6 +47,9 @@ var (
 	TokenValueViperKey        = viperKey("login.token.value", "")
 	TokenStudentIdViperKey    = viperKey("login.token.studentId", "")
 	TokenDateValueViperKey    = viperKey("login.token.generatedAt", "")
+	DiscordBotTokenViperKey   = viperKey("discord.bot.token", "discord-token")
+	DiscordChannelIdViperKey  = viperKey("discord.channel.id", "discord-channel")
+	DiscordGuildIdViperKey    = viperKey("discord.guild.id", "discord-guild")
 
 	flagMapping = make(map[string]ViperKey)
 )
