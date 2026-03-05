@@ -17,4 +17,17 @@
 .idea
 dist
 
+# Binaires compilés
 gaps-cli
+main
+
+# Variables d'environnement
+.env
+.env.local
+
+# Historique des notes (données personnelles)
+.gaps/
+grades-history.json
+
+# Config Claude
+.claude/
