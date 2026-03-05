@@ -2,20 +2,15 @@
 
 > Bot Discord personnel pour suivre automatiquement ses notes et absences HEIG-VD.
 
-**Auteur :** Tom Berthoud
-**Basé sur :** [heig-lherman/gaps-cli](https://github.com/heig-lherman/gaps-cli) — merci pour le travail de scraping GAPS sur lequel ce projet s'appuie entièrement.
-
----
-
 ## Comment ça fonctionne
 
 ### Mode en ligne (Render + UptimeRobot)
 
-```
+
 ┌─────────────────────────────────────────────────────────────────┐
 │                        TOUTES LES 10 MIN                        │
 │                                                                 │
-│   UptimeRobot ──ping──► Render (gaps-cli bot)                  │
+│   UptimeRobot ──ping──► Render (gaps-cli bot)                   │
 │                              │                                  │
 │                              ▼                                  │
 │                         Se connecte à GAPS                      │
@@ -31,12 +26,12 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                     À LA DEMANDE (toi)                          │
 │                                                                 │
-│   Toi (tel/PC) ──/notes──► Render ──► GAPS ──► réponse éphémère│
+│   Toi (tel/PC) ──/notes──► Render ──► GAPS ──► réponse éphémère │
 │                                                                 │
-│   Réponse éphémère = visible uniquement par toi,               │
+│   Réponse éphémère = visible uniquement par toi,                │
 │   disparaît quand tu fermes Discord, jamais dans le salon.      │
 └─────────────────────────────────────────────────────────────────┘
-```
+
 
 ### Ce qui est visible par qui ?
 
@@ -53,7 +48,6 @@
 
 Les commandes slash (`/notes`, etc.) sont éphémères — elles ne polluent pas le salon. En revanche, les **notifications automatiques** et le **message de démarrage** s'accumulent dans le salon au fil du temps. `/clear` supprime jusqu'à 100 de ces messages d'un coup.
 
----
 
 ## Fonctionnalités
 
@@ -79,7 +73,6 @@ Affiche : matière, nom de l'épreuve, ta note, la moyenne de classe, le poids.
 | `/statut` | État du bot : dernière vérif, prochain check, nb de notes |
 | `/clear` | Supprime les messages du salon (100 max) |
 
----
 
 ## Mapping des semestres
 
@@ -97,7 +90,6 @@ Le numéro de semestre correspond à ton parcours global depuis ta première ren
 Le tri par semestre est basé sur la **date de l'épreuve** : automne = sept–jan, printemps = fév–août.
 Configure `GAPS_STUDY_START_YEAR` avec l'année de ta première rentrée (ex: `2024` pour une rentrée en septembre 2024).
 
----
 
 ## Installation
 
@@ -107,7 +99,6 @@ Configure `GAPS_STUDY_START_YEAR` avec l'année de ta première rentrée (ex: `2
 - Go 1.21+ (pour lancer en local)
 - Un compte [Render](https://render.com) (pour le déploiement en ligne)
 
----
 
 ## Option A — Lancer en local
 
@@ -208,7 +199,6 @@ Le free tier Render endort le service après 15 min sans requête HTTP. Le bot e
 
 UptimeRobot ping le bot toutes les 5 min → Render ne le met jamais en veille → le bot surveille GAPS en permanence.
 
----
 
 ## Crédits
 
@@ -221,3 +211,9 @@ Les ajouts de ce fork :
 - Filtrage par semestre
 
 **Auteur du fork :** [Tom Berthoud](https://github.com/tom-berthoud)
+
+Merci à [heig-lherman] pour le projet initial et à la communauté open-source pour l'inspiration !
+
+Merci à Claude code pour avoir carry le projet.
+
+N'héstiter pas à contribuer, signaler des bugs ou proposer des améliorations via les issues ou pull requests !
