@@ -322,6 +322,8 @@ func (s *ScraperCommand) findClass(grade *scraperGrade, classes []string) string
 	return grade.Course
 }
 
+var webhookClient = &http.Client{Timeout: 10 * time.Second}
+
 func sendDiscordWebhook(apiUrl string, grade *scraperGrade) error {
 	if grade == nil {
 		return fmt.Errorf("grade est nil")
@@ -346,7 +348,7 @@ func sendDiscordWebhook(apiUrl string, grade *scraperGrade) error {
 		return err
 	}
 
-	resp, err := http.Post(apiUrl, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := webhookClient.Post(apiUrl, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return err
 	}
@@ -383,7 +385,7 @@ func sendDiscordWebhook2(apiUrl string, grade *scraperGrade) error {
 		return err
 	}
 
-	resp, err := http.Post(apiUrl, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := webhookClient.Post(apiUrl, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return err
 	}

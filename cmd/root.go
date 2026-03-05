@@ -110,7 +110,7 @@ func getConfigDirectory() string {
 	util.CheckErr(err)
 
 	log.Debugf("creating config dir %s", configDir+"/gaps-cli")
-	err = os.MkdirAll(configDir+"/gaps-cli", 0755)
+	err = os.MkdirAll(configDir+"/gaps-cli", 0700)
 	util.CheckErr(err)
 
 	return configDir
@@ -118,7 +118,7 @@ func getConfigDirectory() string {
 
 func initViper(cmd *cobra.Command, v *viper.Viper, name string, configDir string, path string) {
 	if path != "" {
-		v.SetConfigFile(cfgFile)
+		v.SetConfigFile(path)
 	} else {
 		v.AddConfigPath(configDir)
 		v.SetConfigType("yaml")
@@ -126,8 +126,12 @@ func initViper(cmd *cobra.Command, v *viper.Viper, name string, configDir string
 	}
 
 	log.Debugf("writing config file %s", v.ConfigFileUsed())
-	if err := v.SafeWriteConfig(); err != nil {
+	if err := v.SafeWriteConfigAs(v.ConfigFileUsed()); err != nil {
 		util.CheckErrExcept(err, viper.ConfigFileAlreadyExistsError(""))
+	}
+	// Restreindre les permissions du fichier de config (600 = lecture/écriture owner uniquement)
+	if f := v.ConfigFileUsed(); f != "" {
+		os.Chmod(f, 0600)
 	}
 
 	if err := v.ReadInConfig(); err == nil {

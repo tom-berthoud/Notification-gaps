@@ -97,7 +97,6 @@ func refreshToken(username string, password string) {
 	util.CheckErr(err)
 
 	log.Info("Successfully logged in")
-	log.Tracef("Token: %s", token)
 	log.Tracef("Student Id: %d", studentId)
 
 	credentialsViper.Set(TokenValueViperKey.Key(), token)

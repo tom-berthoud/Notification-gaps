@@ -31,3 +31,7 @@ grades-history.json
 
 # Config Claude
 .claude/
+
+# Caches Go
+.gomodcache/
+.gocache/
