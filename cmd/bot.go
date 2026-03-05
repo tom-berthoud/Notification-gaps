@@ -132,14 +132,52 @@ func init() {
 
 	botCmd.Flags().IntVar(&botOpts.interval, "interval", 600, "Seconds between each grade check")
 
+	botCmd.Flags().Uint(StudyStartYearViperKey.Flag(), 0, "Academic year you started your studies (e.g. 2023)")
+	defaultViper.BindPFlag(StudyStartYearViperKey.Key(), botCmd.Flags().Lookup(StudyStartYearViperKey.Flag()))
+	defaultViper.SetDefault(StudyStartYearViperKey.Key(), currentAcademicYear()-1)
+
 	rootCmd.AddCommand(botCmd)
 }
 
-// registerSlashCommands registers /notes and /absences on the guild (instant) or globally (up to 1h delay).
+// semesterToYear maps a semester number (1-6) to its academic year.
+func semesterToYear(sem int) uint {
+	startYear := defaultViper.GetUint(StudyStartYearViperKey.Key())
+	return startYear + uint((sem-1)/2)
+}
+
+// registerSlashCommands registers slash commands on the guild (instant) or globally (up to 1h delay).
 func (b *BotCommand) registerSlashCommands(dg *discordgo.Session, guildId string) error {
+	semChoices := []*discordgo.ApplicationCommandOptionChoice{
+		{Name: "S1", Value: 1},
+		{Name: "S2", Value: 2},
+		{Name: "S3", Value: 3},
+		{Name: "S4", Value: 4},
+		{Name: "S5", Value: 5},
+		{Name: "S6", Value: 6},
+	}
+
 	commands := []*discordgo.ApplicationCommand{
-		{Name: "notes", Description: "Affiche tes notes actuelles"},
-		{Name: "absences", Description: "Affiche tes absences"},
+		{
+			Name:        "notes",
+			Description: "Affiche tes notes (semestre en cours par défaut)",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "semestre",
+					Description: "Numéro de semestre (S1 à S6)",
+					Required:    false,
+					Choices:     semChoices,
+				},
+			},
+		},
+		{
+			Name:        "allnotes",
+			Description: "Affiche toutes tes notes (toutes les années)",
+		},
+		{
+			Name:        "absences",
+			Description: "Affiche tes absences",
+		},
 	}
 
 	for _, cmd := range commands {
@@ -166,9 +204,18 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 		var embeds []*discordgo.MessageEmbed
 		var err error
 
-		switch i.ApplicationCommandData().Name {
+		data := i.ApplicationCommandData()
+		switch data.Name {
 		case "notes":
-			embeds, err = b.buildGradesEmbeds()
+			year := currentAcademicYear()
+			for _, opt := range data.Options {
+				if opt.Name == "semestre" {
+					year = semesterToYear(int(opt.IntValue()))
+				}
+			}
+			embeds, err = b.buildGradesEmbeds(year)
+		case "allnotes":
+			embeds, err = b.buildAllGradesEmbeds()
 		case "absences":
 			embeds, err = b.buildAbsencesEmbeds()
 		default:
@@ -348,7 +395,20 @@ func buildGradeNotifEmbed(g *botGrade, prev *botGrade) *discordgo.MessageEmbed {
 	}
 }
 
-func (b *BotCommand) buildGradesEmbeds() ([]*discordgo.MessageEmbed, error) {
+func (b *BotCommand) buildAllGradesEmbeds() ([]*discordgo.MessageEmbed, error) {
+	startYear := defaultViper.GetUint(StudyStartYearViperKey.Key())
+	var embeds []*discordgo.MessageEmbed
+	for year := startYear; year <= currentAcademicYear(); year++ {
+		e, err := b.buildGradesEmbeds(year)
+		if err != nil {
+			return nil, err
+		}
+		embeds = append(embeds, e...)
+	}
+	return embeds, nil
+}
+
+func (b *BotCommand) buildGradesEmbeds(year uint) ([]*discordgo.MessageEmbed, error) {
 	if isTokenExpired() {
 		refreshToken(
 			defaultViper.GetString(UsernameViperKey.Key()),
@@ -356,7 +416,7 @@ func (b *BotCommand) buildGradesEmbeds() ([]*discordgo.MessageEmbed, error) {
 		)
 	}
 	cfg := buildTokenClientConfiguration()
-	grades, err := gaps.NewGradesAction(cfg, currentAcademicYear()).FetchGrades()
+	grades, err := gaps.NewGradesAction(cfg, year).FetchGrades()
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +439,7 @@ func (b *BotCommand) buildGradesEmbeds() ([]*discordgo.MessageEmbed, error) {
 			})
 		}
 
-		title := class.Name
+		title := fmt.Sprintf("[%d-%d] %s", year, year+1, class.Name)
 		if class.HasExam {
 			title += " (examen)"
 		}
@@ -393,7 +453,7 @@ func (b *BotCommand) buildGradesEmbeds() ([]*discordgo.MessageEmbed, error) {
 
 	if len(embeds) == 0 {
 		embeds = append(embeds, &discordgo.MessageEmbed{
-			Title:       "Notes",
+			Title:       fmt.Sprintf("Notes %d-%d", year, year+1),
 			Description: "Aucune note trouvée pour cette année.",
 			Color:       0x95a5a6,
 		})

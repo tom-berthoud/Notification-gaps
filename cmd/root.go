@@ -50,6 +50,7 @@ var (
 	DiscordBotTokenViperKey   = viperKey("discord.bot.token", "discord-token")
 	DiscordChannelIdViperKey  = viperKey("discord.channel.id", "discord-channel")
 	DiscordGuildIdViperKey    = viperKey("discord.guild.id", "discord-guild")
+	StudyStartYearViperKey    = viperKey("study.start.year", "start-year")
 
 	flagMapping = make(map[string]ViperKey)
 )
