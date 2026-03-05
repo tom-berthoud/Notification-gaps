@@ -57,10 +57,10 @@ universal_binaries:
   - replace: false
 dockers:
   - image_templates:
-      - "ghcr.io/heig-lherman/gaps-cli:{{ .Tag }}"
-      - "ghcr.io/heig-lherman/gaps-cli:v{{ .Major }}"
-      - "ghcr.io/heig-lherman/gaps-cli:v{{ .Major }}.{{ .Minor }}"
-      - "ghcr.io/heig-lherman/gaps-cli:latest"
+      - "ghcr.io/tom-berthoud/notification-gaps:{{ .Tag }}"
+      - "ghcr.io/tom-berthoud/notification-gaps:v{{ .Major }}"
+      - "ghcr.io/tom-berthoud/notification-gaps:v{{ .Major }}.{{ .Minor }}"
+      - "ghcr.io/tom-berthoud/notification-gaps:latest"
     build_flag_templates:
       - "--pull"
       - "--label=org.opencontainers.image.created={{.Date}}"
@@ -69,8 +69,8 @@ dockers:
       - "--label=org.opencontainers.image.version={{.Version}}"
 release:
   github:
-    owner: heig-lherman
-    name: gaps-cli
+    owner: tom-berthoud
+    name: Notification-gaps
   prerelease: auto
 checksum:
   name_template: 'checksums.txt'

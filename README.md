@@ -188,6 +188,10 @@ Dans Discord : **Paramètres** → **Apparence** → **Mode développeur** → A
 
 5. Clique **Deploy** → attends que le build termine → le bot passe en ligne ✅
 
+### Note — Perte d'historique au redémarrage (free tier)
+
+Sur le free tier Render, l'historique des notes est stocké dans `/tmp` qui est effacé à chaque redémarrage. Si le bot redémarre au moment exact où une note apparaît sur GAPS, cette notification sera manquée. En pratique, avec UptimeRobot actif, les redémarrages sont rares et courts. Pour une persistance totale, Render propose des "Disks" (payants).
+
 ### Étape 4 — Éviter la mise en veille (free tier)
 
 Le free tier Render endort le service après 15 min sans requête HTTP. Le bot expose un endpoint `/health` prévu pour ça.

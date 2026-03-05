@@ -15,5 +15,7 @@ services:
         sync: false
       - key: GAPS_DISCORD_GUILD_ID
         sync: false
+      - key: GAPS_STUDY_START_YEAR
+        sync: false
       - key: GAPS_HISTORY_GRADES_FILE
         value: /tmp/grades-history.json
