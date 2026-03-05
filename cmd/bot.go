@@ -22,6 +22,9 @@ import (
 type BotCommand struct {
 	interval    int
 	historyFile string
+	lastCheck   time.Time
+	nextCheck   time.Time
+	gradeCount  int
 }
 
 var (
@@ -54,6 +57,7 @@ var (
 
 			dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 				log.Infof("Bot connected as %s", r.User.String())
+				s.UpdateGameStatus(0, "👀 Surveille GAPS...")
 			})
 
 			dg.AddHandler(botOpts.handleInteraction(channelId))
@@ -83,7 +87,16 @@ var (
 				}
 			}()
 
+			// Message de démarrage
+			dg.ChannelMessageSendEmbed(channelId, &discordgo.MessageEmbed{
+				Title:       "✅ Bot démarré",
+				Description: fmt.Sprintf("Vérification des notes toutes les **%d min**.\nUtilise `/notes`, `/moyenne`, `/recap`, `/manquantes`, `/absences` ou `/statut`.", botOpts.interval/60),
+				Color:       0x2ecc71,
+				Timestamp:   time.Now().Format(time.RFC3339),
+			})
+
 			// Initial scrape
+			botOpts.nextCheck = time.Now().Add(time.Duration(botOpts.interval) * time.Second)
 			if err := botOpts.runScrape(dg, channelId); err != nil {
 				log.WithError(err).Error("Initial scrape failed")
 			}
@@ -101,6 +114,7 @@ var (
 					log.Info("Shutting down bot")
 					return nil
 				case <-ticker.C:
+					botOpts.nextCheck = time.Now().Add(time.Duration(botOpts.interval) * time.Second)
 					if err := botOpts.runScrape(dg, channelId); err != nil {
 						log.WithError(err).Error("Scrape failed")
 					}
@@ -228,6 +242,10 @@ func (b *BotCommand) registerSlashCommands(dg *discordgo.Session, guildId string
 			Description: "Affiche tes absences",
 		},
 		{
+			Name:        "statut",
+			Description: "Affiche l'état du bot (dernière vérif, prochain check...)",
+		},
+		{
 			Name:        "clear",
 			Description: "Supprime les messages du canal (100 max)",
 		},
@@ -261,9 +279,10 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 			return
 		}
 
-		// Acknowledge immediately (Discord requires response within 3s)
+		// Acknowledge immediately — éphémère pour les commandes perso (visible uniquement par toi)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{Flags: discordgo.MessageFlagsEphemeral},
 		})
 
 		var embeds []*discordgo.MessageEmbed
@@ -300,6 +319,8 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 			embeds, err = b.buildManquantesEmbeds()
 		case "absences":
 			embeds, err = b.buildAbsencesEmbeds()
+		case "statut":
+			embeds = b.buildStatutEmbed()
 		default:
 			return
 		}
@@ -327,6 +348,8 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 
 // runScrape checks for new grades and sends a notification if any changed.
 func (b *BotCommand) runScrape(dg *discordgo.Session, channelId string) error {
+	b.lastCheck = time.Now()
+
 	if isTokenExpired() {
 		refreshToken(
 			defaultViper.GetString(UsernameViperKey.Key()),
@@ -344,6 +367,14 @@ func (b *BotCommand) runScrape(dg *discordgo.Session, channelId string) error {
 	}
 
 	current := mapBotGrades(grades)
+
+	// Compte total de notes pour /statut
+	count := 0
+	for _, course := range current {
+		count += len(course)
+	}
+	b.gradeCount = count
+
 	previous, err := b.readHistory()
 	if previous == nil {
 		if err != nil {
@@ -802,4 +833,31 @@ func (b *BotCommand) handleClear(s *discordgo.Session, i *discordgo.InteractionC
 	s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
 		Content: fmt.Sprintf("✅ %d message(s) supprimé(s).", len(ids)),
 	})
+}
+
+// ── /statut ───────────────────────────────────────────────────────────────────
+
+func (b *BotCommand) buildStatutEmbed() []*discordgo.MessageEmbed {
+	lastCheck := "Jamais"
+	if !b.lastCheck.IsZero() {
+		lastCheck = b.lastCheck.Format("02/01/2006 à 15:04:05")
+	}
+	nextCheck := "Inconnu"
+	if !b.nextCheck.IsZero() {
+		nextCheck = b.nextCheck.Format("02/01/2006 à 15:04:05")
+	}
+
+	fields := []*discordgo.MessageEmbedField{
+		{Name: "🕐 Dernière vérification", Value: lastCheck, Inline: false},
+		{Name: "⏭️ Prochain check", Value: nextCheck, Inline: false},
+		{Name: "📊 Notes en cache", Value: fmt.Sprintf("**%d** notes", b.gradeCount), Inline: false},
+		{Name: "🔄 Intervalle", Value: fmt.Sprintf("Toutes les **%d min**", b.interval/60), Inline: false},
+	}
+
+	return []*discordgo.MessageEmbed{{
+		Title:     "Statut du bot",
+		Color:     0x3498db,
+		Fields:    fields,
+		Timestamp: time.Now().Format(time.RFC3339),
+	}}
 }
