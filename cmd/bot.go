@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/r3labs/diff/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"lutonite.dev/gaps-cli/gaps"
@@ -88,12 +87,14 @@ var (
 			}()
 
 			// Message de démarrage
-			dg.ChannelMessageSendEmbed(channelId, &discordgo.MessageEmbed{
+			if _, err := dg.ChannelMessageSendEmbed(channelId, &discordgo.MessageEmbed{
 				Title:       "✅ Bot démarré",
 				Description: fmt.Sprintf("Vérification des notes toutes les **%d min**.\nUtilise `/notes`, `/moyenne`, `/recap`, `/manquantes`, `/absences` ou `/statut`.", botOpts.interval/60),
 				Color:       0x2ecc71,
 				Timestamp:   time.Now().Format(time.RFC3339),
-			})
+			}); err != nil {
+				log.WithError(err).Warn("Failed to send startup message")
+			}
 
 			// Initial scrape
 			botOpts.nextCheck = time.Now().Add(time.Duration(botOpts.interval) * time.Second)
@@ -349,6 +350,7 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 // runScrape checks for new grades and sends a notification if any changed.
 func (b *BotCommand) runScrape(dg *discordgo.Session, channelId string) error {
 	b.lastCheck = time.Now()
+	b.historyFile = defaultViper.GetString(GradesHistoryFileViperKey.Key())
 
 	if isTokenExpired() {
 		refreshToken(
@@ -358,15 +360,19 @@ func (b *BotCommand) runScrape(dg *discordgo.Session, channelId string) error {
 	}
 
 	cfg := buildTokenClientConfiguration()
-	year := currentAcademicYear()
+	startYear := defaultViper.GetUint(StudyStartYearViperKey.Key())
 
-	ga := gaps.NewGradesAction(cfg, year)
-	grades, err := ga.FetchGrades()
-	if err != nil {
-		return fmt.Errorf("fetch grades: %w", err)
+	current := make(botHistory)
+	for year := startYear; year <= currentAcademicYear(); year++ {
+		grades, err := gaps.NewGradesAction(cfg, year).FetchGrades()
+		if err != nil {
+			return fmt.Errorf("fetch grades year %d: %w", year, err)
+		}
+		for course, gradeMap := range mapBotGrades(grades) {
+			key := fmt.Sprintf("%d/%s", year, course)
+			current[key] = gradeMap
+		}
 	}
-
-	current := mapBotGrades(grades)
 
 	// Compte total de notes pour /statut
 	count := 0
@@ -384,27 +390,27 @@ func (b *BotCommand) runScrape(dg *discordgo.Session, channelId string) error {
 		return b.writeHistory(current)
 	}
 
-	changes, _ := diff.Diff(previous, current, diff.TagName("diff"), diff.DisableStructValues())
-	if len(changes) == 0 {
-		log.Info("No grade changes")
-		return nil
+	notified := false
+	for courseKey, currentGrades := range current {
+		for desc, g := range currentGrades {
+			if g.Grade == "-" || g.Grade == "" || g.ClassMean == "-" {
+				continue
+			}
+			prev, exists := previous[courseKey][desc]
+			if exists && prev.Grade == g.Grade && prev.ClassMean == g.ClassMean {
+				continue
+			}
+			var prevGrade *botGrade
+			if exists {
+				prevGrade = prev
+			}
+			log.Infof("Notified new grade: [%s] %s = %s", g.Course, g.Description, g.Grade)
+			dg.ChannelMessageSendEmbed(channelId, buildGradeNotifEmbed(g, prevGrade))
+			notified = true
+		}
 	}
-
-	seen := make(map[string]bool)
-	for _, change := range changes {
-		g := resolveBotGrade(current, change)
-		if g == nil || g.ClassMean == "-" {
-			continue
-		}
-		key := g.Course + "|" + g.Description
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-
-		embed := buildGradeNotifEmbed(g, resolveBotGrade(previous, change))
-		dg.ChannelMessageSendEmbed(channelId, embed)
-		log.Infof("Notified new grade: [%s] %s = %s", g.Course, g.Description, g.Grade)
+	if !notified {
+		log.Info("No grade changes")
 	}
 
 	return b.writeHistory(current)
@@ -443,19 +449,8 @@ func mapBotGrades(classes []*parser.ClassGrades) botHistory {
 	return result
 }
 
-func resolveBotGrade(h botHistory, change diff.Change) *botGrade {
-	if change.Type == diff.DELETE || len(change.Path) < 2 {
-		return nil
-	}
-	course, ok := h[change.Path[0]]
-	if !ok {
-		return nil
-	}
-	return course[change.Path[1]]
-}
 
 func (b *BotCommand) readHistory() (botHistory, error) {
-	b.historyFile = defaultViper.GetString(GradesHistoryFileViperKey.Key())
 	data, err := os.ReadFile(b.historyFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -464,11 +459,11 @@ func (b *BotCommand) readHistory() (botHistory, error) {
 		return nil, err
 	}
 	var h botHistory
-	return h, json.Unmarshal(data, &h)
+	err = json.Unmarshal(data, &h)
+	return h, err
 }
 
 func (b *BotCommand) writeHistory(h botHistory) error {
-	b.historyFile = defaultViper.GetString(GradesHistoryFileViperKey.Key())
 	data, err := json.MarshalIndent(h, "", "\t")
 	if err != nil {
 		return err

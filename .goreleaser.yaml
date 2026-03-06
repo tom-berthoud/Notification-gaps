@@ -42,10 +42,10 @@ archives:
 nfpms:
   - id: gaps-cli
     package_name: gaps-cli
-    description: CLI for GAPS (Gaps is an Academical Planification System)
-    vendor: Lutonite Developments
-    homepage: https://lutonite.dev/
-    maintainer: Lutonite <me@l6e.ch>
+    description: Discord bot to monitor GAPS grades and absences (HEIG-VD)
+    vendor: Tom Berthoud
+    homepage: https://github.com/tom-berthoud/Notification-gaps
+    maintainer: Tom Berthoud <tom.berthoud@heig-vd.ch>
     license: LGPL-3.0
     formats:
       - apk

@@ -168,27 +168,17 @@ func (s *ScraperCommand) runScraper() error {
 		}
 		notifications[*grade] = true
 
-		nmean, _ := strconv.ParseFloat(grade.ClassMean, 32)
-		n := &notifier.ApiGrade{
-			Course: grade.Course,
-			Class:  s.findClass(grade, classes),
-			Name:   grade.Description,
-			Mean:   float32(nmean),
-		}
-		_ = n
 		s.logChange(previous, grade, change)
 
 		if strings.HasPrefix(s.apiUrl, "https://discord.com/api/webhooks/") {
-			// ✅ envoyer sur le premier webhook
 			if err := sendDiscordWebhook(s.apiUrl, grade); err != nil {
 				log.WithError(err).Error("❌ Échec du webhook 1")
 			} else {
 				log.Info("✅ Notification envoyée au webhook 1")
 			}
 
-			// ✅ envoyer sur le deuxième webhook (optionnel)
 			if strings.HasPrefix(s.apiUrl2, "https://discord.com/api/webhooks/") {
-				if err2 := sendDiscordWebhook2(s.apiUrl2, grade); err2 != nil {
+				if err2 := sendDiscordWebhook(s.apiUrl2, grade); err2 != nil {
 					log.WithError(err2).Error("❌ Échec du webhook 2")
 				} else {
 					log.Info("✅ Notification envoyée au webhook 2")
@@ -196,8 +186,14 @@ func (s *ScraperCommand) runScraper() error {
 			}
 		} else {
 			ctx := context.Background()
-			err := client.SendGrade(ctx, n)
-			if err != nil {
+			nmean, _ := strconv.ParseFloat(grade.ClassMean, 32)
+			n := &notifier.ApiGrade{
+				Course: grade.Course,
+				Class:  s.findClass(grade, classes),
+				Name:   grade.Description,
+				Mean:   float32(nmean),
+			}
+			if err := client.SendGrade(ctx, n); err != nil {
 				log.WithError(err).Error("❌ Échec de l'envoi vers l'API GAPS")
 			}
 		}
@@ -293,8 +289,6 @@ func (s *ScraperCommand) writeHistory(grades scraperResult) error {
 }
 
 func (s *ScraperCommand) findClass(grade *scraperGrade, classes []string) string {
-	re, _ := regexp.Compile(`[\w-]+?-(\w+)-([CL])\d`)
-
 	if grade.Type != "Cours" && grade.Type != "Laboratoire" {
 		return grade.Course
 	}
@@ -304,7 +298,7 @@ func (s *ScraperCommand) findClass(grade *scraperGrade, classes []string) string
 			continue
 		}
 
-		matches := re.FindStringSubmatch(class)
+		matches := classRegex.FindStringSubmatch(class)
 		if len(matches) != 3 {
 			continue
 		}
@@ -322,7 +316,10 @@ func (s *ScraperCommand) findClass(grade *scraperGrade, classes []string) string
 	return grade.Course
 }
 
-var webhookClient = &http.Client{Timeout: 10 * time.Second}
+var (
+	webhookClient = &http.Client{Timeout: 10 * time.Second}
+	classRegex    = regexp.MustCompile(`[\w-]+?-(\w+)-([CL])\d`)
+)
 
 func sendDiscordWebhook(apiUrl string, grade *scraperGrade) error {
 	if grade == nil {
@@ -361,39 +358,3 @@ func sendDiscordWebhook(apiUrl string, grade *scraperGrade) error {
 	return nil
 }
 
-func sendDiscordWebhook2(apiUrl string, grade *scraperGrade) error {
-	if grade == nil {
-		return fmt.Errorf("grade est nil")
-	}
-
-	if apiUrl == "" {
-		return fmt.Errorf("URL Discord vide")
-	}
-
-	// Vérifie que c'est un webhook Discord
-	if !strings.HasPrefix(apiUrl, "https://discord.com/api/webhooks/") {
-		return fmt.Errorf("URL non Discord : %s", apiUrl)
-	}
-
-	payload := map[string]string{
-		"content": fmt.Sprintf("📢 Nouvelle note : [%s] %s  (moy: %s)",
-			grade.Course, grade.Description, grade.ClassMean),
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-
-	resp, err := webhookClient.Post(apiUrl, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("Discord a retourné %s", resp.Status)
-	}
-
-	return nil
-}
