@@ -34,7 +34,7 @@ No tests exist (`*_test.go` files are absent). No linter configured.
 main.go          → cmd.Execute() entry point (Cobra CLI)
 cmd/
   root.go        → Config via dual Viper instances (defaultViper + credentialsViper)
-  bot.go         → Discord bot: polling loop, slash commands, grade diff, notifications (~860 lines, core file)
+  bot.go         → Discord bot: polling loop, slash commands, grade diff, notifications (~1000 lines, core file)
   scraper.go     → Legacy webhook-based scraper mode
   login.go       → Auth to GAPS
   grades.go, absences.go, classes.go, report-card.go, version.go → CLI subcommands
@@ -57,3 +57,10 @@ util/            → Error/logging helpers
 ## Required Environment Variables (bot mode)
 
 `GAPS_LOGIN_USERNAME`, `GAPS_LOGIN_PASSWORD`, `GAPS_DISCORD_BOT_TOKEN`, `GAPS_DISCORD_CHANNEL_ID`, `GAPS_DISCORD_GUILD_ID`, `GAPS_STUDY_START_YEAR`
+
+## Future Code Quality Improvements
+
+- **Découper `bot.go`** (~1000 lignes) en fichiers séparés : `bot_commands.go` (handlers), `bot_embeds.go` (builders d'embeds), `bot_scrape.go` (polling/diff de notes).
+- **Ajouter des tests** — surtout pour `parser/grades.go` (parsing HTML) et la logique de diff de notes, facilement testables avec des fixtures HTML.
+- **Notification d'absences** — surveiller les nouvelles absences dans le polling, pas seulement les notes.
+- **Notifications par utilisateur** — permettre à chaque utilisateur de s'abonner via `/subscribe` au lieu de notifier tout un channel.

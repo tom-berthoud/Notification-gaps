@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	ics "github.com/arran4/golang-ical"
 	"github.com/bwmarrin/discordgo"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -227,6 +230,12 @@ func (b *BotCommand) registerSlashCommands(dg *discordgo.Session, guildId string
 					Required:    false,
 					Choices:     semChoices,
 				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "cours",
+					Description: "Filtrer par nom de cours (ex: MAT1, PRG2)",
+					Required:    false,
+				},
 			},
 		},
 		{
@@ -257,6 +266,18 @@ func (b *BotCommand) registerSlashCommands(dg *discordgo.Session, guildId string
 		{
 			Name:        "absences",
 			Description: "Affiche tes absences",
+		},
+		{
+			Name:        "horaire",
+			Description: "Affiche ton horaire du jour (ou d'une date donnée)",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "date",
+					Description: "Date au format JJ.MM.AAAA (par défaut aujourd'hui)",
+					Required:    false,
+				},
+			},
 		},
 		{
 			Name:        "statut",
@@ -309,14 +330,21 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 		case "notes":
 			year := currentAcademicYear()
 			filter := currentSemesterFilter()
+			var courseFilter string
 			for _, opt := range data.Options {
 				if opt.Name == "semestre" {
 					sem := int(opt.IntValue())
 					year = semesterToYear(sem)
 					filter = semesterFilter(sem)
 				}
+				if opt.Name == "cours" {
+					courseFilter = opt.StringValue()
+				}
 			}
 			embeds, err = b.buildGradesEmbeds(year, filter)
+			if courseFilter != "" && err == nil {
+				embeds = filterEmbedsByCourse(embeds, courseFilter)
+			}
 		case "allnotes":
 			embeds, err = b.buildAllGradesEmbeds()
 		case "moyenne":
@@ -336,6 +364,22 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 			embeds, err = b.buildManquantesEmbeds()
 		case "absences":
 			embeds, err = b.buildAbsencesEmbeds()
+		case "horaire":
+			targetDate := zurichNow()
+			for _, opt := range data.Options {
+				if opt.Name == "date" {
+					loc, _ := time.LoadLocation("Europe/Zurich")
+					parsed, parseErr := time.ParseInLocation("02.01.2006", opt.StringValue(), loc)
+					if parseErr != nil {
+						s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+							Content: "❌ Format de date invalide. Utilise JJ.MM.AAAA (ex: 24.03.2026)",
+						})
+						return
+					}
+					targetDate = parsed
+				}
+			}
+			embeds, err = b.buildHoraireEmbeds(targetDate)
 		case "statut":
 			embeds = b.buildStatutEmbed()
 		default:
@@ -871,4 +915,114 @@ func (b *BotCommand) buildStatutEmbed() []*discordgo.MessageEmbed {
 		Fields:    fields,
 		Timestamp: zurichNow().Format(time.RFC3339),
 	}}
+}
+
+// ── /horaire ─────────────────────────────────────────────────────────────────
+
+func (b *BotCommand) buildHoraireEmbeds(targetDate time.Time) ([]*discordgo.MessageEmbed, error) {
+	if isTokenExpired() {
+		refreshToken(
+			defaultViper.GetString(UsernameViperKey.Key()),
+			credentialsViper.GetString(PasswordViperKey.Key()),
+		)
+	}
+	cfg := buildTokenClientConfiguration()
+
+	// GAPS semester: 0 = both, we fetch the full year schedule
+	cal, err := gaps.NewStudentScheduleAction(cfg, currentAcademicYear(), 0).FetchSchedule()
+	if err != nil {
+		return nil, err
+	}
+
+	loc, _ := time.LoadLocation("Europe/Zurich")
+	dayStart := time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, loc)
+	dayEnd := dayStart.AddDate(0, 0, 1)
+
+	type lesson struct {
+		start   time.Time
+		end     time.Time
+		summary string
+		room    string
+	}
+
+	var lessons []lesson
+	for _, event := range cal.Events() {
+		dtStart, err := event.GetStartAt()
+		if err != nil {
+			continue
+		}
+		dtEnd, err := event.GetEndAt()
+		if err != nil {
+			continue
+		}
+		start := dtStart.In(loc)
+		end := dtEnd.In(loc)
+
+		if start.Before(dayEnd) && end.After(dayStart) {
+			summary := ""
+			if prop := event.GetProperty(ics.ComponentPropertySummary); prop != nil {
+				summary = prop.Value
+			}
+			room := ""
+			if prop := event.GetProperty(ics.ComponentPropertyLocation); prop != nil {
+				room = prop.Value
+			}
+			lessons = append(lessons, lesson{start: start, end: end, summary: summary, room: room})
+		}
+	}
+
+	sort.Slice(lessons, func(i, j int) bool {
+		return lessons[i].start.Before(lessons[j].start)
+	})
+
+	dateStr := targetDate.Format("02/01/2006")
+	weekdays := []string{"dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"}
+	dayName := weekdays[targetDate.Weekday()]
+
+	if len(lessons) == 0 {
+		return []*discordgo.MessageEmbed{{
+			Title:       fmt.Sprintf("📅 Horaire du %s (%s)", dateStr, dayName),
+			Description: "Aucun cours prévu ce jour.",
+			Color:       0x95a5a6,
+		}}, nil
+	}
+
+	fields := make([]*discordgo.MessageEmbedField, 0, len(lessons))
+	for _, l := range lessons {
+		value := fmt.Sprintf("%s – %s", l.start.Format("15:04"), l.end.Format("15:04"))
+		if l.room != "" {
+			value += fmt.Sprintf(" | Salle: **%s**", l.room)
+		}
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   l.summary,
+			Value:  value,
+			Inline: false,
+		})
+	}
+
+	return []*discordgo.MessageEmbed{{
+		Title:  fmt.Sprintf("📅 Horaire du %s (%s)", dateStr, dayName),
+		Color:  0x3498db,
+		Fields: fields,
+	}}, nil
+}
+
+// ── filtre par cours ─────────────────────────────────────────────────────────
+
+func filterEmbedsByCourse(embeds []*discordgo.MessageEmbed, courseFilter string) []*discordgo.MessageEmbed {
+	filter := strings.ToUpper(courseFilter)
+	var filtered []*discordgo.MessageEmbed
+	for _, e := range embeds {
+		if strings.Contains(strings.ToUpper(e.Title), filter) {
+			filtered = append(filtered, e)
+		}
+	}
+	if len(filtered) == 0 {
+		return []*discordgo.MessageEmbed{{
+			Title:       "Aucun résultat",
+			Description: fmt.Sprintf("Aucun cours trouvé contenant **%s**.", courseFilter),
+			Color:       0x95a5a6,
+		}}
+	}
+	return filtered
 }
