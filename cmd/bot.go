@@ -91,13 +91,13 @@ var (
 				Title:       "✅ Bot démarré",
 				Description: fmt.Sprintf("Vérification des notes toutes les **%d min**.\nUtilise `/notes`, `/moyenne`, `/recap`, `/manquantes`, `/absences` ou `/statut`.", botOpts.interval/60),
 				Color:       0x2ecc71,
-				Timestamp:   time.Now().Format(time.RFC3339),
+				Timestamp:   zurichNow().Format(time.RFC3339),
 			}); err != nil {
 				log.WithError(err).Warn("Failed to send startup message")
 			}
 
 			// Initial scrape
-			botOpts.nextCheck = time.Now().Add(time.Duration(botOpts.interval) * time.Second)
+			botOpts.nextCheck = zurichNow().Add(time.Duration(botOpts.interval) * time.Second)
 			if err := botOpts.runScrape(dg, channelId); err != nil {
 				log.WithError(err).Error("Initial scrape failed")
 			}
@@ -115,7 +115,7 @@ var (
 					log.Info("Shutting down bot")
 					return nil
 				case <-ticker.C:
-					botOpts.nextCheck = time.Now().Add(time.Duration(botOpts.interval) * time.Second)
+					botOpts.nextCheck = zurichNow().Add(time.Duration(botOpts.interval) * time.Second)
 					if err := botOpts.runScrape(dg, channelId); err != nil {
 						log.WithError(err).Error("Scrape failed")
 					}
@@ -186,6 +186,22 @@ func semesterFilter(sem int) func(time.Time) bool {
 		return isAutumnGrade
 	}
 	return isSpringGrade
+}
+
+// currentSemesterFilter returns the date filter matching the current semester
+// (autumn Sept–Jan, spring Feb–Aug).
+func currentSemesterFilter() func(time.Time) bool {
+	m := zurichNow().Month()
+	if m >= 9 || m <= 1 {
+		return isAutumnGrade
+	}
+	return isSpringGrade
+}
+
+// zurichNow returns the current time in Europe/Zurich timezone.
+func zurichNow() time.Time {
+	loc, _ := time.LoadLocation("Europe/Zurich")
+	return time.Now().In(loc)
 }
 
 // registerSlashCommands registers slash commands on the guild (instant) or globally (up to 1h delay).
@@ -292,7 +308,7 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 		switch data.Name {
 		case "notes":
 			year := currentAcademicYear()
-			var filter func(time.Time) bool
+			filter := currentSemesterFilter()
 			for _, opt := range data.Options {
 				if opt.Name == "semestre" {
 					sem := int(opt.IntValue())
@@ -305,7 +321,7 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 			embeds, err = b.buildAllGradesEmbeds()
 		case "moyenne":
 			year := currentAcademicYear()
-			var filter func(time.Time) bool
+			filter := currentSemesterFilter()
 			for _, opt := range data.Options {
 				if opt.Name == "semestre" {
 					sem := int(opt.IntValue())
@@ -349,7 +365,7 @@ func (b *BotCommand) handleInteraction(channelId string) func(*discordgo.Session
 
 // runScrape checks for new grades and sends a notification if any changed.
 func (b *BotCommand) runScrape(dg *discordgo.Session, channelId string) error {
-	b.lastCheck = time.Now()
+	b.lastCheck = zurichNow()
 	b.historyFile = defaultViper.GetString(GradesHistoryFileViperKey.Key())
 
 	if isTokenExpired() {
@@ -853,6 +869,6 @@ func (b *BotCommand) buildStatutEmbed() []*discordgo.MessageEmbed {
 		Title:     "Statut du bot",
 		Color:     0x3498db,
 		Fields:    fields,
-		Timestamp: time.Now().Format(time.RFC3339),
+		Timestamp: zurichNow().Format(time.RFC3339),
 	}}
 }
